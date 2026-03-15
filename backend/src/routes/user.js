@@ -1,15 +1,18 @@
-// GET /api/user/history
-// Returns all roasts for the logged-in user
+// ============================================================
+//  RoastFolio — User Route v2
+//  Returns roast history for logged-in user
+// ============================================================
 import { Router } from "express";
-import { requireAuth } from "../middleware/clerkAuth.js";
-import { getUserHistory } from "../services/supabaseService.js";
+import { getUserRoasts } from "../services/supabaseService.js";
+import { requireAuth }   from "../middleware/clerkAuth.js";
 
 export const userRouter = Router();
 
+// ── GET /api/user/history ─────────────────────────────────────
 userRouter.get("/history", requireAuth, async (req, res, next) => {
   try {
-    const history = await getUserHistory(req.userId);
-    res.json({ roasts: history });
+    const roasts = await getUserRoasts(req.userId);
+    res.json({ roasts });
   } catch (err) {
     next(err);
   }
