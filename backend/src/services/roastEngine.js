@@ -1,67 +1,73 @@
 // ============================================================
-//  RoastFolio — Roast Engine v3
-//  Fix: strict JSON schema enforcement for Qwen
+//  RoastFolio — Roast Engine v4
+//  Fixed: proper calibration, experience-aware scoring,
+//  stops penalizing GitHub when portfolio content is rich
 // ============================================================
 import Groq from "groq-sdk";
 
 const client = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 const MODE_PERSONAS = {
-  unhinged: `You are a feral, unhinged AI that has seen 100,000 bad portfolios and completely lost it.
+  unhinged: `You are a feral, unhinged AI career coach who has seen 100,000 portfolios.
 You use ALL CAPS for emphasis. You use words like "bruh", "bro", "no cap", "deadass", "ratio", "L", "mid", "cooked".
-You make dramatic comparisons like "this GitHub is emptier than my will to live".
-You NAME their actual projects and drag them specifically.
-Every criticism is 100% real and backed by actual data from their portfolio.
-You are NOT professional. You are NOT polite. You are NOT an assistant. You ROAST.`,
+You make dramatic comparisons. You NAME their actual projects and drag OR hype them.
+You are NOT professional. You are NOT polite. You ROAST or HYPE based on what you actually see.
+If someone is impressive, you scream about how impressive they are just as loudly as you would roast a weak portfolio.`,
 
-  brutal: `You are a cold, ruthless FAANG senior engineer. Zero warmth. Zero patience.
-Short sharp sentences like verdicts. You NAME their actual projects.
-You are NOT an assistant. You are a judge delivering sentences.`,
+  brutal: `You are a cold, ruthless FAANG senior engineer. Zero warmth.
+Short sharp sentences like verdicts. You NAME their actual projects and experience.
+You are NOT an assistant. You are a judge. You reward genuine excellence with genuine praise.`,
 
-  honest: `You are a brutally honest senior mentor. Direct and specific.
-You NAME actual projects. Every criticism has a specific fix.
-You are NOT an assistant giving generic advice.`,
+  honest: `You are a brutally honest senior mentor with 15 years experience.
+Direct, specific, fair. You name actual projects and internships.
+Senior devs get scored as senior devs. Beginners get scored as beginners.
+You calibrate your feedback to their actual experience level.`,
 
-  soft: `You are a warm encouraging senior developer. Specific and kind.
-You NAME their actual wins. You make them feel capable.`,
+  soft: `You are a warm encouraging senior developer.
+Specific and kind. You name their actual wins. You make them feel capable.`,
 };
 
 const SYSTEM_MESSAGES = {
-  unhinged: `You are RoastFolio UNHINGED. You are NOT an assistant. You ROAST.
-CRITICAL JSON RULES — FOLLOW EXACTLY:
-1. overall_grade MUST be exactly one of: "S", "A", "B", "C", "D", "F" — no plus or minus
-2. scores object MUST have exactly 6 keys, each with "score" (integer) and "verdict" (string)
-3. roast_paragraphs MUST be an array of exactly 4 strings
-4. instant_wins MUST be an array of exactly 3 strings
-5. No trailing commas. No extra fields. Valid JSON only.
-Respond with ONLY the raw JSON object. Zero text before or after.`,
+  unhinged: `You are RoastFolio UNHINGED. You are NOT an assistant. You react honestly to what you see.
+SCORING RULES — READ CAREFULLY:
+- Score based on ACTUAL content quality, not what's missing
+- If someone has 4 internships including IIT Bombay, their experience score must be HIGH
+- GitHub absence does NOT automatically mean low score if portfolio is rich
+- A senior dev with real projects and internships cannot score below 60 overall
+- Be SPECIFIC — name actual projects, companies, technologies you see
+CRITICAL JSON: overall_grade MUST be exactly "S","A","B","C","D", or "F" — no variants
+Respond ONLY with raw JSON. Zero text before or after.`,
 
-  brutal: `You are RoastFolio BRUTAL. You are NOT an assistant.
-CRITICAL: overall_grade must be "S","A","B","C","D", or "F" only — no variants.
-Respond with ONLY raw valid JSON. Zero text before or after.`,
+  brutal: `You are RoastFolio BRUTAL. Score based on ACTUAL content.
+Internship experience at real companies = high recruiter appeal.
+Real projects with technical depth = high project quality.
+overall_grade MUST be "S","A","B","C","D", or "F" only.
+Respond ONLY with raw valid JSON.`,
 
-  honest: `You are RoastFolio HONEST. Direct mentor, not an assistant.
-CRITICAL: overall_grade must be "S","A","B","C","D", or "F" only.
-Respond with ONLY raw valid JSON. Zero text before or after.`,
+  honest: `You are RoastFolio HONEST. Score calibrated to actual experience level.
+IMPORTANT: If the portfolio shows internships at real companies, research experience,
+and multiple technical projects — this is a strong candidate. Score accordingly.
+overall_grade MUST be "S","A","B","C","D", or "F" only.
+Respond ONLY with raw valid JSON.`,
 
-  soft: `You are RoastFolio SOFT. Encouraging mentor, not an assistant.
-CRITICAL: overall_grade must be "S","A","B","C","D", or "F" only.
-Respond with ONLY raw valid JSON. Zero text before or after.`,
+  soft: `You are RoastFolio SOFT. Warm mentor, not an assistant.
+overall_grade MUST be "S","A","B","C","D", or "F" only.
+Respond ONLY with raw valid JSON.`,
 };
 
 function buildPrompt(data) {
-  const { url, rawText, resumeText, projectsFound, techStackMentions,
-    githubUsername, githubData, wordCount, hasLiveDemos, linksFound, mode } = data;
+  const {
+    url, rawText, resumeText, projectsFound, techStackMentions,
+    githubUsername, githubData, wordCount, hasLiveDemos, linksFound, mode,
+  } = data;
 
   const projectsBlock = projectsFound?.length
     ? projectsFound.map((p, i) => `  PROJECT_${i + 1}: "${p}"`).join("\n")
-    : "  NO PROJECTS DETECTED — roast them for this";
+    : "  NO PROJECTS DETECTED IN HEADINGS (check raw text for projects)";
 
   const techBlock = techStackMentions?.length
     ? techStackMentions.join(", ")
-    : "NONE DETECTED";
-
-  // ── Replace the githubBlock section in buildPrompt() with this ──
+    : "None auto-detected — check raw text carefully";
 
   const githubBlock = githubData
     ? `
@@ -72,25 +78,24 @@ GITHUB PROFILE — github.com/${githubData.username}
   Total stars: ${githubData.total_stars}
   Top languages: ${githubData.top_languages?.join(", ") || "None"}
   Last activity: ${githubData.last_activity}
-  Most starred repo: ${githubData.most_starred_repo}
-
-  ACTUAL REPOS (roast or praise these specifically):
+  Most starred: ${githubData.most_starred_repo}
+  REPOS:
 ${githubData.repos?.map(r =>
-      `    - ${r.name} (${r.language}) — ${r.stars}★ — last pushed ${r.last_pushed}
-       Description: "${r.description}"`
-    ).join("\n") || "    No repos found"}
+  `    - ${r.name} (${r.language}) — ${r.stars}★ — ${r.last_pushed}
+       "${r.description}"`
+).join("\n") || "    No repos"}
 `
     : githubUsername
-      ? `GitHub username found (${githubUsername}) but API fetch failed — assume minimal activity`
-      : "NOT FOUND ANYWHERE — roast them specifically for having no GitHub presence";
+      ? `GitHub username detected (${githubUsername}) but data unavailable`
+      : `No GitHub link found on portfolio — DO NOT heavily penalize if portfolio content is rich.
+         Many senior devs link GitHub from resume not portfolio.`;
 
   const modeInstructions = {
-    unhinged: `‼️ UNHINGED MODE — Be LOUD, SPECIFIC, and SAVAGE. Use slang. Use ALL CAPS for emphasis.
-NAME their actual projects. Make dramatic comparisons. Be genuinely funny.
-DO NOT sound like LinkedIn. DO NOT be an assistant.`,
-    brutal: `⚔️ BRUTAL MODE — Short verdicts. Name actual projects. Zero fluff.`,
-    honest: `🎯 HONEST MODE — Specific and direct. Reference actual projects and skills.`,
-    soft: `🌱 SOFT MODE — Warm and specific. Reference actual wins.`,
+    unhinged: `‼️ UNHINGED MODE — React to what you ACTUALLY see. If it's impressive, HYPE IT LOUDLY.
+If it's weak, DRAG IT. Use slang. Use caps. Be specific. Name actual projects and companies.`,
+    brutal:   `⚔️ BRUTAL MODE — Short verdicts. Name actual experience and projects. Fair but cold.`,
+    honest:   `🎯 HONEST MODE — Calibrate to their actual level. Senior experience = senior scoring.`,
+    soft:     `🌱 SOFT MODE — Warm and specific. Lead with real wins.`,
   };
 
   return `
@@ -98,121 +103,140 @@ ${modeInstructions[mode] || modeInstructions.honest}
 
 ${MODE_PERSONAS[mode] || MODE_PERSONAS.honest}
 
-════════ DEVELOPER DATA — READ ALL OF THIS ════════
+════════ DEVELOPER DATA ════════
 
 URL: ${url || "NOT PROVIDED"}
 WORD COUNT: ${wordCount || 0}
-LIVE DEMOS: ${hasLiveDemos ? "YES" : "NO"}
+LIVE DEMOS DETECTED: ${hasLiveDemos ? "YES" : "NO"}
 GITHUB: ${githubBlock}
 
-PROJECTS — USE THESE EXACT NAMES IN YOUR ROAST:
+PROJECTS FOUND IN HEADINGS:
 ${projectsBlock}
 
-TECH STACK: ${techBlock}
-LINKS: ${linksFound?.slice(0, 8).join(", ") || "None"}
+TECH STACK DETECTED: ${techBlock}
 
-PORTFOLIO TEXT:
----
-${(rawText || "").slice(0, 1800) || "EMPTY"}
----
+════════ FULL PORTFOLIO TEXT — READ THIS CAREFULLY ════════
+${(rawText || "").slice(0, 4000) || "EMPTY"}
+════════ END PORTFOLIO TEXT ════════
 
-RESUME TEXT:
----
-${(resumeText || "").slice(0, 1800) || "NOT PROVIDED"}
----
+${resumeText ? `RESUME TEXT:\n---\n${resumeText.slice(0, 2000)}\n---` : ""}
 
-════════ RETURN THIS EXACT JSON STRUCTURE ════════
+════════ SCORING CALIBRATION RULES ════════
 
-STRICT RULES:
-- "overall_grade" MUST be one of exactly: "S" "A" "B" "C" "D" "F" — NO plus/minus, NO other values
-- "scores" MUST have EXACTLY these 6 keys: project_quality, description_clarity, tech_stack_depth, github_health, presentation, recruiter_appeal
-- Each score entry: {"score": <integer 0-100>, "verdict": "<string>"}
-- "roast_paragraphs": array of EXACTLY 4 strings
-- "instant_wins": array of EXACTLY 3 strings
-- No trailing commas anywhere
+READ THESE BEFORE SCORING — THEY ARE MANDATORY:
+
+1. EXPERIENCE CALIBRATION:
+   - 0 internships + student projects only → max overall score 55
+   - 1-2 internships at real companies → min overall score 50, can reach 75
+   - 3+ internships OR research experience → min overall score 60, can reach 85
+   - Published research paper → +10 bonus to overall
+   - IIT/FAANG/top company internship → +10 bonus to recruiter_appeal
+
+2. PROJECT QUALITY:
+   - Tutorial clones (todo app, weather app) → score 20-40
+   - Real projects with technical depth → score 50-70
+   - Projects with live demos AND stars → score 65-80
+   - Research-level or novel projects → score 75-90
+
+3. GITHUB HEALTH:
+   - If no GitHub link BUT portfolio is rich → score 40-60 (not 0-20)
+   - If GitHub found with active repos → score based on actual activity
+   - Never give 0 github_health unless portfolio is completely empty
+
+4. RECRUITER APPEAL:
+   - Multiple real internships = automatically 50+ recruiter appeal
+   - Clean portfolio design with clear nav = +10
+   - Live demo links = +10
+
+5. OVERALL GRADE CALIBRATION:
+   S (90-100): Exceptional — FAANG-ready, multiple strong projects, great presentation
+   A (80-89):  Strong — real internships, solid projects, good presentation
+   B (65-79):  Good — some real experience, decent projects, room to grow
+   C (50-64):  Average — student-level work, needs improvement
+   D (35-49):  Weak — mostly tutorial work, poor presentation
+   F (0-34):   Very weak — almost nothing to show
+
+IMPORTANT: After reading the full portfolio text above, identify:
+- How many REAL internships/jobs do they have?
+- Do they have RESEARCH experience?
+- Are their projects technically deep or tutorial-level?
+- Then score accordingly. A portfolio with 4 internships and research papers
+  CANNOT be a D. That would be a calibration failure.
+
+════════ RETURN EXACTLY THIS JSON ════════
 
 {
-  "overall_score": <integer 0-100>,
-  "overall_grade": <MUST BE EXACTLY "S" or "A" or "B" or "C" or "D" or "F">,
-  "one_liner": "<max 20 words, punchy, references their actual situation>",
+  "overall_score": <0-100, calibrated per rules above>,
+  "overall_grade": <EXACTLY "S" or "A" or "B" or "C" or "D" or "F">,
+  "one_liner": "<max 20 words — specific to their actual situation>",
   "scores": {
-    "project_quality":     {"score": <0-100>, "verdict": "<specific — mention actual project names>"},
+    "project_quality":     {"score": <0-100>, "verdict": "<specific — name actual projects>"},
     "description_clarity": {"score": <0-100>, "verdict": "<specific — reference actual content>"},
     "tech_stack_depth":    {"score": <0-100>, "verdict": "<specific — name their actual stack>"},
     "github_health":       {"score": <0-100>, "verdict": "<specific — address github situation>"},
-    "presentation":        {"score": <0-100>, "verdict": "<specific — live demos, portfolio site>"},
-    "recruiter_appeal":    {"score": <0-100>, "verdict": "<specific — would recruiter stop scrolling>"}
+    "presentation":        {"score": <0-100>, "verdict": "<specific — live demos, design quality>"},
+    "recruiter_appeal":    {"score": <0-100>, "verdict": "<specific — internships, companies, overall package>"}
   },
   "roast_paragraphs": [
-    "<overview in ${mode} mode voice — NAME actual projects — be specific>",
-    "<genuine wins — name specific things that actually impressed you>",
-    "<single biggest problem — name it specifically — no vague statements>",
-    "<top 3 numbered actions — specific, doable this week>"
+    "<overview in ${mode} voice — NAME actual companies and projects — calibrated to experience>",
+    "<genuine wins — be SPECIFIC about what actually impressed you>",
+    "<single biggest improvement area — specific and actionable>",
+    "<top 3 numbered actions — specific to their actual situation>"
   ],
   "instant_wins": [
-    "<specific fix #1 doable under 1 hour — reference their actual project>",
+    "<specific fix #1 doable under 1 hour>",
     "<specific fix #2 doable under 1 hour>",
     "<specific fix #3 doable under 1 hour>"
   ],
-  "skills_detected": ${JSON.stringify(techStackMentions?.length ? techStackMentions : ["Unknown"])},
-  "missing_skills_for_market": ["<skill the market demands that they lack>"],
-  "portfolio_archetype": "<MUST BE ONE OF EXACTLY: The Tutorial Collector, The Ghost Dev, The Overclaimer, The Hidden Gem, The Almost There, The Real Deal, The Blank Slate>",
-  "share_quote": "<tweet-ready sentence AS RoastFolio ABOUT this dev — ${mode === "unhinged" ? "savage and funny" : "punchy and honest"}>"
+  "skills_detected": ${JSON.stringify(techStackMentions?.length ? techStackMentions : ["Check portfolio text"])},
+  "missing_skills_for_market": ["<skill that would elevate their profile>"],
+  "portfolio_archetype": "<MUST BE ONE OF: The Tutorial Collector, The Ghost Dev, The Overclaimer, The Hidden Gem, The Almost There, The Real Deal, The Blank Slate>",
+  "share_quote": "<tweet-ready sentence AS RoastFolio about this specific dev>"
 }`;
 }
 
-// ── Sanitize result — fix common AI mistakes ─────────────────
 function sanitizeResult(result) {
-  // Fix grade — strip any + or - suffix
   if (result.overall_grade) {
     result.overall_grade = result.overall_grade.replace(/[^SABCDF]/g, "");
-    if (!["S", "A", "B", "C", "D", "F"].includes(result.overall_grade)) {
-      result.overall_grade = "C"; // safe fallback
+    if (!["S","A","B","C","D","F"].includes(result.overall_grade)) {
+      result.overall_grade = "C";
     }
   }
-
-  // Fix archetype — map to closest valid value
   const validArchetypes = [
-    "The Tutorial Collector", "The Ghost Dev", "The Overclaimer",
-    "The Hidden Gem", "The Almost There", "The Real Deal", "The Blank Slate"
+    "The Tutorial Collector","The Ghost Dev","The Overclaimer",
+    "The Hidden Gem","The Almost There","The Real Deal","The Blank Slate",
   ];
   if (!validArchetypes.includes(result.portfolio_archetype)) {
-    result.portfolio_archetype = "The Almost There"; // safe fallback
+    result.portfolio_archetype = "The Almost There";
   }
-
-  // Fix roast_paragraphs — ensure it's an array of 4 strings
   if (!Array.isArray(result.roast_paragraphs)) {
-    result.roast_paragraphs = [String(result.roast_paragraphs), "", "", ""];
+    result.roast_paragraphs = [String(result.roast_paragraphs || ""), "", "", ""];
   }
   while (result.roast_paragraphs.length < 4) result.roast_paragraphs.push("");
-
-  // Fix instant_wins — ensure array of 3
   if (!Array.isArray(result.instant_wins)) {
-    result.instant_wins = [String(result.instant_wins), "", ""];
+    result.instant_wins = [String(result.instant_wins || ""), "", ""];
   }
-  while (result.instant_wins.length < 3) result.instant_wins.push("Check your README");
-
+  while (result.instant_wins.length < 3) result.instant_wins.push("Update your README");
   return result;
 }
 
-// ── Main export ───────────────────────────────────────────────
 export async function generateRoast(portfolioData) {
   const { mode = "honest" } = portfolioData;
 
   const temperature = {
-    unhinged: 1.3,
-    brutal: 1.0,
-    honest: 0.8,
-    soft: 0.7,
-  }[mode] || 0.8;
+    unhinged: 1.2,
+    brutal:   0.9,
+    honest:   0.7,
+    soft:     0.6,
+  }[mode] || 0.7;
 
   const completion = await client.chat.completions.create({
-    model: "qwen/qwen3-32b",
+    model:       "qwen/qwen3-32b",
     temperature,
-    max_tokens: 2048,
+    max_tokens:  2500,
     messages: [
       { role: "system", content: SYSTEM_MESSAGES[mode] || SYSTEM_MESSAGES.honest },
-      { role: "user", content: buildPrompt(portfolioData) },
+      { role: "user",   content: buildPrompt(portfolioData) },
     ],
     response_format: { type: "json_object" },
   });
@@ -232,10 +256,10 @@ export async function generateRoast(portfolioData) {
   }
 
   result = sanitizeResult(result);
-  result.mode = mode;
+  result.mode          = mode;
   result.portfolio_url = portfolioData.url;
-  result.generated_at = new Date().toISOString();
-  result.model_used = "qwen/qwen3-32b";
+  result.generated_at  = new Date().toISOString();
+  result.model_used    = "qwen/qwen3-32b";
 
   return result;
 }
