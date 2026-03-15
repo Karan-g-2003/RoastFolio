@@ -1,41 +1,43 @@
 // ============================================================
-//  RoastFolio — Scraper Service v3
-//  Uses Puppeteer for JS-rendered sites (React/Vue/Next apps)
-//  Falls back to Cheerio for static sites (fast path)
+//  RoastFolio — Scraper Service (Production/Serverless safe)
+//  Uses fetch + Cheerio for static sites
+//  Uses ScrapingBee free tier for JS-rendered SPAs
+//  No Puppeteer — works on Vercel serverless
 // ============================================================
 import * as cheerio from "cheerio";
-import puppeteer from "puppeteer";
 
 // ── GitHub API ────────────────────────────────────────────────
 async function fetchGitHubData(username) {
   try {
     const headers = {
       "User-Agent": "RoastFolioBot/1.0",
-      "Accept": "application/vnd.github.v3+json",
+      "Accept":     "application/vnd.github.v3+json",
     };
     if (process.env.GITHUB_TOKEN) {
       headers["Authorization"] = `Bearer ${process.env.GITHUB_TOKEN}`;
     }
 
     const [userRes, reposRes] = await Promise.all([
-      fetch(`https://api.github.com/users/${username}`, { headers, signal: AbortSignal.timeout(8000) }),
-      fetch(`https://api.github.com/users/${username}/repos?sort=pushed&per_page=10&type=public`, { headers, signal: AbortSignal.timeout(8000) }),
+      fetch(`https://api.github.com/users/${username}`,
+        { headers, signal: AbortSignal.timeout(8000) }),
+      fetch(`https://api.github.com/users/${username}/repos?sort=pushed&per_page=10&type=public`,
+        { headers, signal: AbortSignal.timeout(8000) }),
     ]);
 
     if (!userRes.ok) return null;
-    const user = await userRes.json();
+    const user  = await userRes.json();
     const repos = reposRes.ok ? await reposRes.json() : [];
 
     const repoSummaries = Array.isArray(repos)
       ? repos.filter(r => !r.fork).map(r => ({
-        name: r.name,
-        description: r.description || "No description",
-        language: r.language || "Unknown",
-        stars: r.stargazers_count,
-        forks: r.forks_count,
-        last_pushed: r.pushed_at?.split("T")[0],
-        url: r.html_url,
-      }))
+          name:        r.name,
+          description: r.description || "No description",
+          language:    r.language    || "Unknown",
+          stars:       r.stargazers_count,
+          forks:       r.forks_count,
+          last_pushed: r.pushed_at?.split("T")[0],
+          url:         r.html_url,
+        }))
       : [];
 
     const totalStars = Array.isArray(repos)
@@ -48,22 +50,23 @@ async function fetchGitHubData(username) {
     const topLanguages = Object.entries(languageCount)
       .sort((a, b) => b[1] - a[1]).slice(0, 5).map(([lang]) => lang);
 
-    const ageYears = ((Date.now() - new Date(user.created_at)) / (1000 * 60 * 60 * 24 * 365)).toFixed(1);
+    const ageYears = ((Date.now() - new Date(user.created_at))
+      / (1000*60*60*24*365)).toFixed(1);
 
     return {
       username,
-      name: user.name || username,
-      bio: user.bio || "",
-      public_repos: user.public_repos || 0,
-      followers: user.followers || 0,
-      total_stars: totalStars,
-      top_languages: topLanguages,
+      name:              user.name || username,
+      bio:               user.bio  || "",
+      public_repos:      user.public_repos || 0,
+      followers:         user.followers    || 0,
+      total_stars:       totalStars,
+      top_languages:     topLanguages,
       account_age_years: parseFloat(ageYears),
-      repos: repoSummaries,
-      most_starred_repo: [...repoSummaries].sort((a, b) => b.stars - a.stars)[0]?.name || "None",
-      non_fork_repos: repoSummaries.length,
-      last_activity: repoSummaries[0]?.last_pushed || "Unknown",
-      profile_url: `https://github.com/${username}`,
+      repos:             repoSummaries,
+      most_starred_repo: [...repoSummaries].sort((a,b) => b.stars - a.stars)[0]?.name || "None",
+      non_fork_repos:    repoSummaries.length,
+      last_activity:     repoSummaries[0]?.last_pushed || "Unknown",
+      profile_url:       `https://github.com/${username}`,
     };
   } catch (err) {
     console.warn(`GitHub API failed for ${username}:`, err.message);
@@ -71,137 +74,130 @@ async function fetchGitHubData(username) {
   }
 }
 
-// ── Fast scrape with Cheerio (static sites) ───────────────────
+// ── Scrape with Jina AI (free, renders JS, no API key needed) ─
+// Jina Reader API: prefix any URL with https://r.jina.ai/
+// Returns clean markdown text — works for SPAs, free forever
+async function scrapeWithJina(url) {
+  try {
+    const jinaUrl = `https://r.jina.ai/${url}`;
+    const res = await fetch(jinaUrl, {
+      headers: {
+        "User-Agent": "RoastFolioBot/1.0",
+        "Accept":     "text/plain",
+      },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) return null;
+    const text = await res.text();
+    return text.slice(0, 8000); // Jina returns markdown
+  } catch (err) {
+    console.warn(`Jina scrape failed for ${url}:`, err.message);
+    return null;
+  }
+}
+
+// ── Fast scrape with Cheerio (static/GitHub pages) ───────────
 async function scrapeWithCheerio(url) {
   const res = await fetch(url, {
     headers: { "User-Agent": "Mozilla/5.0 (compatible; RoastFolioBot/1.0)" },
-    signal: AbortSignal.timeout(10000),
+    signal:  AbortSignal.timeout(10000),
   });
   const html = await res.text();
-  const $ = cheerio.load(html);
+  const $    = cheerio.load(html);
+  const title = $("title").text().trim();
   $("script, style, nav, footer").remove();
   const text = $("body").text().replace(/\s+/g, " ").trim();
-  return { html, text, title: $("title").text().trim() };
+  return { text, title, html };
 }
 
-// ── Full scrape with Puppeteer (React/Vue/SPA sites) ──────────
-async function scrapeWithPuppeteer(url) {
-  let browser;
-  try {
-    browser = await puppeteer.launch({
-      headless: "new",
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-gpu",
-      ],
-    });
-    const page = await browser.newPage();
-    await page.setUserAgent("Mozilla/5.0 (compatible; RoastFolioBot/1.0)");
-
-    // Wait for network to settle after React renders
-    await page.goto(url, { waitUntil: "networkidle2", timeout: 20000 });
-
-    // Extra wait for lazy-loaded content
-    await new Promise(r => setTimeout(r, 2000));
-
-    const title = await page.title();
-    const text = await page.evaluate(() => {
-      // Remove noise elements
-      ["script", "style", "nav", "footer", "header"].forEach(tag => {
-        document.querySelectorAll(tag).forEach(el => el.remove());
-      });
-      return document.body?.innerText?.replace(/\s+/g, " ")?.trim() || "";
-    });
-
-    const html = await page.content();
-    return { html, text, title };
-  } finally {
-    if (browser) await browser.close();
-  }
-}
-
-// ── Detect if site needs Puppeteer ───────────────────────────
-async function detectAndScrape(url) {
-  // Always use Puppeteer for known SPA hosting platforms
-  const needsPuppeteer = [
-    "vercel.app", "netlify.app", "herokuapp.com",
-    "pages.dev", "github.io", "render.com",
-  ].some(host => url.includes(host));
-
-  if (needsPuppeteer) {
-    console.log(`[Scraper] Using Puppeteer for: ${url}`);
+// ── Smart scrape — tries Cheerio first, Jina as fallback ─────
+async function smartScrape(url) {
+  // GitHub repos/profiles — use Cheerio (static HTML, fast)
+  if (url.includes("github.com")) {
     try {
-      return await scrapeWithPuppeteer(url);
-    } catch (err) {
-      console.warn("[Scraper] Puppeteer failed, falling back to Cheerio:", err.message);
-      return await scrapeWithCheerio(url);
-    }
-  }
-
-  // Try Cheerio first (fast)
-  const result = await scrapeWithCheerio(url);
-
-  // If page text is very short (<200 chars), it's probably a SPA — retry with Puppeteer
-  if (result.text.length < 200) {
-    console.log(`[Scraper] Short content (${result.text.length} chars), retrying with Puppeteer`);
-    try {
-      return await scrapeWithPuppeteer(url);
+      const result = await scrapeWithCheerio(url);
+      return { text: result.text, title: result.title, html: result.html };
     } catch {
-      return result; // return whatever Cheerio got
+      return { text: "", title: "", html: "" };
     }
   }
 
-  return result;
+  // For all other sites — try Cheerio first
+  try {
+    const cheerioResult = await scrapeWithCheerio(url);
+    // If we got enough content, use it
+    if (cheerioResult.text.length > 300) {
+      return { text: cheerioResult.text, title: cheerioResult.title, html: cheerioResult.html };
+    }
+    // Content too short = SPA that needs JS rendering
+    // Fall through to Jina
+    console.log(`[Scraper] Short content (${cheerioResult.text.length} chars), trying Jina AI`);
+  } catch (err) {
+    console.warn(`[Scraper] Cheerio failed: ${err.message}`);
+  }
+
+  // Jina AI — free, renders JavaScript, returns clean text
+  const jinaText = await scrapeWithJina(url);
+  if (jinaText) {
+    return { text: jinaText, title: "", html: "" };
+  }
+
+  return { text: "", title: "", html: "" };
 }
 
 // ── Main scraper export ───────────────────────────────────────
 export async function scrapePortfolio(url, resumeText = "") {
   try {
-    const { html, text: rawText, title: pageTitle } = await detectAndScrape(url);
-    const $ = cheerio.load(html);
+    const { text: rawText, title: pageTitle, html } = await smartScrape(url);
+    const $ = html ? cheerio.load(html) : null;
 
     // Extract headings as project candidates
     const projectsFound = [];
-    $("h1, h2, h3").each((_, el) => {
-      const t = $(el).text().trim();
-      if (t.length > 3 && t.length < 80) projectsFound.push(t);
-    });
+    if ($) {
+      $("h1, h2, h3").each((_, el) => {
+        const t = $(el).text().trim();
+        if (t.length > 3 && t.length < 80) projectsFound.push(t);
+      });
+    } else {
+      // Extract from markdown text (Jina output)
+      const headingMatches = rawText.match(/^#{1,3}\s+(.+)$/gm) || [];
+      headingMatches.forEach(h => {
+        const t = h.replace(/^#+\s+/, "").trim();
+        if (t.length > 3 && t.length < 80) projectsFound.push(t);
+      });
+    }
 
     // Extract links
     const linksFound = [];
-    $("a[href]").each((_, el) => {
-      const href = $(el).attr("href");
-      if (href?.startsWith("http")) linksFound.push(href);
-    });
+    if ($) {
+      $("a[href]").each((_, el) => {
+        const href = $(el).attr("href");
+        if (href?.startsWith("http")) linksFound.push(href);
+      });
+    }
     const uniqueLinks = [...new Set(linksFound)];
 
-    // Tech stack detection
+    // Tech stack detection from combined text
     const techKeywords = [
-      "React", "Vue", "Angular", "Next.js", "Node", "Express", "Python", "Django",
-      "TypeScript", "JavaScript", "PostgreSQL", "MongoDB", "Redis", "Docker",
-      "AWS", "Tailwind", "GraphQL", "REST", "FastAPI", "Spring", "Laravel",
-      "C++", "Java", "Kotlin", "Swift", "Flutter", "Firebase", "Supabase",
-      "Machine Learning", "TensorFlow", "PyTorch", "Scikit", "IoT", "Arduino",
-      "Vite", "Prisma", "tRPC", "Remix", "Astro", "SvelteKit", "Nuxt",
+      "React","Vue","Angular","Next.js","Node","Express","Python","Django",
+      "TypeScript","JavaScript","PostgreSQL","MongoDB","Redis","Docker",
+      "AWS","Tailwind","GraphQL","REST","FastAPI","Spring","Laravel",
+      "C++","Java","Kotlin","Swift","Flutter","Firebase","Supabase",
+      "Machine Learning","TensorFlow","PyTorch","Scikit","IoT","Arduino",
+      "Vite","Prisma","tRPC","Remix","Astro","Svelte","Nuxt","Bayesian",
     ];
     const combined = rawText + " " + resumeText;
     const techStackMentions = techKeywords.filter(t =>
       combined.toLowerCase().includes(t.toLowerCase())
     );
 
-    // GitHub detection
-    const githubLink = uniqueLinks.find(l => l.includes("github.com/"));
-    const fromLink = githubLink?.split("github.com/")[1]?.split("/")[0];
-    const fromText = combined.match(/github\.com\/([a-zA-Z0-9_-]+)/i)?.[1];
-    const githubUsername = fromLink || fromText || null;
-
-    // If URL is itself a GitHub profile
-    const githubFromUrl = url.includes("github.com/")
-      ? url.split("github.com/")[1]?.split("/")[0]
-      : null;
-    const finalUsername = githubUsername || githubFromUrl || null;
+    // GitHub username detection
+    const githubLink     = uniqueLinks.find(l => l.includes("github.com/"));
+    const fromLink       = githubLink?.split("github.com/")[1]?.split("/")[0];
+    const fromText       = combined.match(/github\.com\/([a-zA-Z0-9_-]+)/i)?.[1];
+    const githubFromUrl  = url.includes("github.com/")
+      ? url.split("github.com/")[1]?.split("/")[0] : null;
+    const finalUsername  = fromLink || fromText || githubFromUrl || null;
 
     // Fetch real GitHub data
     const githubData = finalUsername ? await fetchGitHubData(finalUsername) : null;
@@ -209,16 +205,16 @@ export async function scrapePortfolio(url, resumeText = "") {
     return {
       url,
       pageTitle,
-      rawText: rawText.slice(0, 5000),
-      projectsFound: [...new Set(projectsFound)].slice(0, 10),
+      rawText:          rawText.slice(0, 5000),
+      projectsFound:    [...new Set(projectsFound)].slice(0, 10),
       techStackMentions,
-      linksFound: uniqueLinks.slice(0, 20),
-      hasLiveDemos: uniqueLinks.some(l =>
-        l.includes("vercel") || l.includes("netlify") ||
-        l.includes("herokuapp") || l.includes("pages.dev")
-      ),
-      wordCount: rawText.split(" ").length,
-      githubUsername: finalUsername,
+      linksFound:       uniqueLinks.slice(0, 20),
+      hasLiveDemos:     combined.toLowerCase().includes("vercel") ||
+                        combined.toLowerCase().includes("netlify") ||
+                        combined.toLowerCase().includes("live demo") ||
+                        combined.toLowerCase().includes("demo"),
+      wordCount:        rawText.split(" ").length,
+      githubUsername:   finalUsername,
       githubData,
     };
   } catch (err) {
@@ -236,11 +232,11 @@ export async function scrapePortfolio(url, resumeText = "") {
 // ── PDF-only path ─────────────────────────────────────────────
 export async function extractFromResumeOnly(resumeText) {
   const techKeywords = [
-    "React", "Vue", "Angular", "Next.js", "Node", "Express", "Python", "Django",
-    "TypeScript", "JavaScript", "PostgreSQL", "MongoDB", "Redis", "Docker",
-    "AWS", "Tailwind", "GraphQL", "REST", "FastAPI", "Spring", "Laravel",
-    "C++", "Java", "Kotlin", "Swift", "Flutter", "Firebase", "Supabase",
-    "Machine Learning", "TensorFlow", "PyTorch", "Scikit", "IoT", "Arduino",
+    "React","Vue","Angular","Next.js","Node","Express","Python","Django",
+    "TypeScript","JavaScript","PostgreSQL","MongoDB","Redis","Docker",
+    "AWS","Tailwind","GraphQL","REST","FastAPI","Spring","Laravel",
+    "C++","Java","Kotlin","Swift","Flutter","Firebase","Supabase",
+    "Machine Learning","TensorFlow","PyTorch","Scikit","IoT","Arduino",
   ];
 
   const techStackMentions = techKeywords.filter(t =>
@@ -248,7 +244,7 @@ export async function extractFromResumeOnly(resumeText) {
   );
 
   const githubUsername = resumeText.match(/github\.com\/([a-zA-Z0-9_-]+)/i)?.[1] || null;
-  const githubData = githubUsername ? await fetchGitHubData(githubUsername) : null;
+  const githubData     = githubUsername ? await fetchGitHubData(githubUsername) : null;
 
   const projectLines = resumeText.split("\n")
     .map(l => l.trim())
@@ -256,12 +252,13 @@ export async function extractFromResumeOnly(resumeText) {
 
   return {
     url: null, pageTitle: null,
-    rawText: resumeText.slice(0, 5000),
-    projectsFound: projectLines.slice(0, 10),
+    rawText:          resumeText.slice(0, 5000),
+    projectsFound:    projectLines.slice(0, 10),
     techStackMentions,
-    linksFound: [],
-    hasLiveDemos: false,
-    wordCount: resumeText.split(" ").length,
+    linksFound:       [],
+    hasLiveDemos:     resumeText.toLowerCase().includes("vercel") ||
+                      resumeText.toLowerCase().includes("live demo"),
+    wordCount:        resumeText.split(" ").length,
     githubUsername,
     githubData,
   };
