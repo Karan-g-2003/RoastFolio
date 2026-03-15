@@ -24,6 +24,7 @@ const allowedOrigins = [
 app.use(cors({
   origin: [
     process.env.FRONTEND_URL,
+    "https://roastfolio.karanbuilds.dev",
     "https://roast-folio.vercel.app",
     "http://localhost:5173",
   ],
