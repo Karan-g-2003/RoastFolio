@@ -1,0 +1,220 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Base ─────────────────────────────────────────────────────── */
+:root {
+  --neon-red: #ff003c;
+  --neon-green: #00ff41;
+  --neon-yellow: #fcee0a;
+  --neon-blue: #00f0ff;
+  --cyber-black: #050505;
+}
+
+html {
+  scroll-behavior: smooth;
+  background-color: var(--cyber-black);
+}
+
+body {
+  background-color: var(--cyber-black);
+  color: #f8f9fa;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Cyber grid background */
+  background-image: 
+    linear-gradient(rgba(0, 255, 65, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 255, 65, 0.03) 1px, transparent 1px);
+  background-size: 30px 30px;
+  background-position: center center;
+}
+
+/* Subtle CRT Grain Overlay */
+body::after {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: url('data:image/svg+xml;utf8,%3Csvg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"%3E%3Cfilter id="noiseFilter"%3E%3CfeTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/%3E%3C/filter%3E%3Crect width="100%25" height="100%25" filter="url(%23noiseFilter)"/%3E%3C/svg%3E');
+  opacity: 0.04;
+  pointer-events: none;
+  z-index: 50;
+}
+
+/* ── Animations ───────────────────────────────────────────────── */
+@keyframes score-fill {
+  from { width: 0%; }
+  to   { width: var(--score-width); }
+}
+
+@keyframes glitch {
+  0% { transform: translate(0) }
+  20% { transform: translate(-2px, 2px) }
+  40% { transform: translate(-2px, -2px) }
+  60% { transform: translate(2px, 2px) }
+  80% { transform: translate(2px, -2px) }
+  100% { transform: translate(0) }
+}
+
+@keyframes type {
+  from { width: 0; }
+  to { width: 100%; }
+}
+
+@keyframes blink-cursor {
+  from, to { border-color: transparent }
+  50% { border-color: var(--neon-green); }
+}
+
+@keyframes grade-pulse {
+  0%, 100% { box-shadow: 4px 4px 0px 0px var(--glow-color); transform: scale(1); }
+  50% { box-shadow: 12px 12px 0px 0px var(--glow-color), -4px -4px 20px 0px var(--glow-color); transform: scale(1.02); }
+}
+
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); } 
+}
+
+@keyframes glitch-rare {
+  0%, 90%, 100% { transform: translate(0); text-shadow: none; }
+  92% { transform: translate(-2px, 0); text-shadow: 2px 0 #ff0040; }
+  94% { transform: translate(2px, 0); text-shadow: -2px 0 #00ffff; }
+  96% { transform: translate(-1px, 0); text-shadow: 1px 0 #00ff41; }
+}
+
+@keyframes blink-after {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ── Utility classes ──────────────────────────────────────────── */
+.animate-score-fill {
+  animation: score-fill 0.8s cubic-bezier(0.87, 0, 0.13, 1) forwards;
+}
+
+.animate-grade-pulse {
+  animation: grade-pulse 2s ease-in-out infinite;
+}
+
+.glitch-hover:hover {
+  animation: glitch 0.2s cubic-bezier(.25, .46, .45, .94) both infinite;
+  color: var(--cyber-black) !important;
+  background-color: var(--neon-green) !important;
+  box-shadow: 4px 4px 0px 0px var(--neon-red) !important;
+}
+
+.typewriter {
+  overflow: hidden;
+  white-space: pre-wrap;
+  border-right: 3px solid var(--neon-green);
+  animation: blink-cursor .75s step-end infinite;
+}
+
+.glitch-text {
+  animation: glitch-rare 4s infinite;
+}
+
+.cursor::after {
+  content: '█';
+  animation: blink-after 1s infinite;
+  color: #00ff41;
+}
+
+.page-transition {
+  animation: fade-in 0.2s ease-in forwards;
+}
+
+/* Scanlines overlay */
+.scanlines {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 9999;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.03) 2px,
+    rgba(0, 0, 0, 0.03) 4px
+  );
+}
+
+.cyber-button {
+  @apply relative inline-block font-mono font-bold uppercase tracking-wider text-cyber-white border-2 border-cyber-white bg-cyber-black px-6 py-3 transition-all duration-100;
+  box-shadow: 4px 4px 0px 0px rgba(255,255,255,1);
+}
+
+.cyber-button:active {
+  transform: translate(4px, 4px);
+  box-shadow: 0px 0px 0px 0px rgba(255,255,255,1);
+}
+
+.cyber-input {
+  @apply w-full bg-cyber-black text-neon-green font-mono border-b-2 border-cyber-gray focus:border-neon-green outline-none py-3 px-4 transition-colors;
+}
+
+.cyber-card {
+  @apply bg-cyber-gray border-2 border-cyber-white p-6 relative;
+  box-shadow: 8px 8px 0px 0px rgba(255,255,255,1);
+}
+
+.cyber-card-green {
+  @apply border-neon-green;
+  box-shadow: 8px 8px 0px 0px var(--neon-green);
+}
+
+.cyber-card-red {
+  @apply border-neon-red;
+  box-shadow: 8px 8px 0px 0px var(--neon-red);
+}
+
+/* Staggered load for score bars */
+.stagger-children > * {
+  opacity: 0;
+  transform: translateX(-10px);
+  animation: fade-in-right 0.3s ease-out forwards;
+}
+@keyframes fade-in-right {
+  to { opacity: 1; transform: translateX(0); }
+}
+.stagger-children > *:nth-child(1) { animation-delay: 0.1s; }
+.stagger-children > *:nth-child(2) { animation-delay: 0.2s; }
+.stagger-children > *:nth-child(3) { animation-delay: 0.3s; }
+.stagger-children > *:nth-child(4) { animation-delay: 0.4s; }
+.stagger-children > *:nth-child(5) { animation-delay: 0.5s; }
+.stagger-children > *:nth-child(6) { animation-delay: 0.6s; }
+
+/* Brutalist Selection */
+::selection {
+  background: var(--neon-green);
+  color: var(--cyber-black);
+}
+
+/* Brutalist Scrollbar */
+::-webkit-scrollbar {
+  width: 12px;
+}
+::-webkit-scrollbar-track {
+  background: var(--cyber-black);
+  border-left: 2px solid var(--cyber-gray);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--neon-green);
+  border: 2px solid var(--cyber-black);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--cyber-white);
+}

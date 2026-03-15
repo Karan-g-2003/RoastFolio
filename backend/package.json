@@ -1,0 +1,29 @@
+{
+  "name": "roastfolio-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "nodemon src/index.js",
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@clerk/clerk-sdk-node": "^4.13.23",
+    "@google/genai": "^1.45.0",
+    "@supabase/supabase-js": "^2.99.1",
+    "cheerio": "^1.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.3.1",
+    "groq-sdk": "^1.1.1",
+    "multer": "^1.4.5-lts.1",
+    "node-fetch": "^3.3.2",
+    "openai": "^6.29.0",
+    "pdf-parse": "^1.1.1",
+    "puppeteer": "^22.11.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.3"
+  }
+}
