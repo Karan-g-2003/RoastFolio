@@ -333,7 +333,7 @@ export default function LandingPage() {
             <a href="https://github.com/Karan-g-2003" target="_blank" rel="noreferrer" className="hover:text-neon-green transition-colors hover:cursor-pointer flex items-center gap-2">
               [ GITHUB ]
             </a>
-            <a href="https://linkedin.com/in/karan-g-2003" target="_blank" rel="noreferrer" className="hover:text-neon-blue transition-colors hover:cursor-pointer flex items-center gap-2">
+            <a href="https://www.linkedin.com/in/karanghuwalewala" target="_blank" rel="noreferrer" className="hover:text-neon-blue transition-colors hover:cursor-pointer flex items-center gap-2">
               [ LINKEDIN ]
             </a>
           </div>
