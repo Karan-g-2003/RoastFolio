@@ -1,12 +1,12 @@
 <div align="center">
 
+<img src="./roastfolio-header.svg" alt="RoastFolio" width="100%"/>
+
 **AI-powered developer career OS. Know where you stand. Then fix it.**
 
 [![Live Demo](https://img.shields.io/badge/LIVE_DEMO-roastfolio.karanbuilds.dev-FF4500?style=for-the-badge&logo=vercel)](https://roastfolio.karanbuilds.dev)
 [![GitHub Stars](https://img.shields.io/github/stars/Karan-g-2003/RoastFolio?style=for-the-badge&color=00ff41)](https://github.com/Karan-g-2003/RoastFolio)
 [![License](https://img.shields.io/badge/LICENSE-MIT-00ffff?style=for-the-badge)](LICENSE)
-
-<img src="./roastfolio-header.svg" alt="RoastFolio" width="100%"/>
 
 </div>
 
