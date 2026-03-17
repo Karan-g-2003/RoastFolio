@@ -241,7 +241,7 @@ RoastFolio/
 Built by **Karan** — final year CS student at VIT Chennai.
 
 [![GitHub](https://img.shields.io/badge/GitHub-Karan--g--2003-00ff41?style=flat-square&logo=github)](https://github.com/Karan-g-2003)
-[![LinkedIn](https://img.shields.io/badge/LinkedIn-Karan-00ffff?style=flat-square&logo=linkedin)](https://linkedin.com/in/karan-g-2003)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-Karan-00ffff?style=flat-square&logo=linkedin)](www.linkedin.com/in/karanghuwalewala)
 [![Live](https://img.shields.io/badge/Live-roastfolio.karanbuilds.dev-FF4500?style=flat-square)](https://roastfolio.karanbuilds.dev)
 
 ---
